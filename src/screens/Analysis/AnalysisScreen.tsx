@@ -14,10 +14,9 @@ import { Dimensions } from "react-native";
 // ✅ Define navigation types
 type RootStackParamList = {
   Recordings: undefined;
-  Analysis: { id: string; recordingName: string; url: string }; // 👈 add id + url
+  Analysis: { recordingName: string };
   Chat: { recordingName: string; analysisData: any };
 };
-
 
 type AnalysisRouteProp = RouteProp<RootStackParamList, "Analysis">;
 
@@ -32,27 +31,22 @@ const AnalysisScreen: React.FC<Props> = ({ route }) => {
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<any>(null);
 
- const id = route.params?.id;
-
-useEffect(() => {
-  const fetchAnalysis = async () => {
-    try {
-      const res = await fetch(
-        `http://10.0.2.2:5000/api/recordings/analyze/${id}`
-      );
-      const data = await res.json();
-      setAnalysis(data);
-    } catch (err) {
-      console.error("Analysis error:", err);
-    } finally {
+  useEffect(() => {
+    // Simulate AI analysis API call with dummy data
+    setTimeout(() => {
+      setAnalysis({
+        bpm: 78,
+        ecg: [0, 2, 4, 2, 0, -2, -4, -2, 0, 3, 5, 3, 0],
+        status: "Normal Sinus Rhythm",
+        probabilities: {
+          normal: 0.82,
+          murmur: 0.1,
+          arrhythmia: 0.08,
+        },
+      });
       setLoading(false);
-    }
-  };
-
-  if (id) fetchAnalysis();
-}, [id]);
-
-
+    }, 2000);
+  }, [recordingName]);
 
   if (loading) {
     return (

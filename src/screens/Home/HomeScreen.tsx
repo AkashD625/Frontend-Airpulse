@@ -4,40 +4,27 @@ import {
   View,
   Text,
   TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
   PermissionsAndroid,
   Platform,
   Animated,
   ScrollView,
-  Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { BleManager, Device } from "react-native-ble-plx";
-import AudioRecorderPlayer from "react-native-audio-recorder-player";
-import RNFS from "react-native-fs";
 
 const manager = new BleManager();
-const audioRecorderPlayer = new AudioRecorderPlayer();
-
-const API_BASE =
-  Platform.OS === "android"
-    ? "http://10.0.2.2:5000"
-    : "http://localhost:5000";
 
 const HomeScreen = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [step, setStep] = useState(2); // 1=BT, 2=Dashboard, 3=Recording
+  const [step, setStep] = useState(2); // default = Dashboard
 
-  // Recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordSecs, setRecordSecs] = useState(0);
-  const [recordTime, setRecordTime] = useState("00:00");
-  const [filePath, setFilePath] = useState<string | null>(null);
-
-  // Waveform animation bars
+  // --- Animated waveform bars ---
   const bar1 = useRef(new Animated.Value(20)).current;
   const bar2 = useRef(new Animated.Value(40)).current;
   const bar3 = useRef(new Animated.Value(30)).current;
@@ -52,27 +39,21 @@ const HomeScreen = () => {
         ])
       ).start();
     };
+
     animateBar(bar1, 20, 60);
     animateBar(bar2, 10, 50);
     animateBar(bar3, 15, 70);
     animateBar(bar4, 25, 65);
   }, []);
 
-  // Request permissions (Android only)
+  // --- Permissions (Android only) ---
   const requestPermissions = async () => {
-    if (Platform.OS === "android") {
-      const perms = [
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    if (Platform.OS === "android" && Platform.Version >= 23) {
+      await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      ].filter(Boolean) as string[];
-
-      try {
-        await PermissionsAndroid.requestMultiple(perms);
-      } catch (e) {
-        console.warn("Permission request error", e);
-      }
+      ]);
     }
   };
 
@@ -80,12 +61,10 @@ const HomeScreen = () => {
     requestPermissions();
     return () => {
       manager.destroy();
-      audioRecorderPlayer.stopRecorder().catch(() => {});
-      audioRecorderPlayer.removeRecordBackListener();
     };
   }, []);
 
-  // Start scanning Bluetooth devices
+  // --- Start scanning ---
   const startScan = () => {
     setDevices([]);
     setIsScanning(true);
@@ -98,7 +77,9 @@ const HomeScreen = () => {
       if (device && device.name) {
         setDevices((prev) => {
           const exists = prev.find((d) => d.id === device.id);
-          if (!exists) return [...prev, device];
+          if (!exists) {
+            return [...prev, device];
+          }
           return prev;
         });
       }
@@ -110,204 +91,200 @@ const HomeScreen = () => {
     }, 8000);
   };
 
-  // Connect to a Bluetooth device
+  // --- Connect to device ---
   const connectToDevice = async (device: Device) => {
     try {
       setIsConnecting(true);
       const connected = await manager.connectToDevice(device.id);
       await connected.discoverAllServicesAndCharacteristics();
       setConnectedDevice(connected);
+      setIsConnecting(false);
     } catch (e) {
       console.error("Connection error:", e);
-      Alert.alert("Bluetooth", "Failed to connect");
-    } finally {
       setIsConnecting(false);
     }
   };
 
-  // Start recording
-  const startRecording = async () => {
-    try {
-      const path = Platform.select({
-        ios: "airpulse_recording.m4a",
-        android: `${RNFS.DocumentDirectoryPath}/airpulse_${Date.now()}.wav`,
-      })!;
-
-      const uri = await audioRecorderPlayer.startRecorder(path);
-      setFilePath(uri);
-
-      audioRecorderPlayer.addRecordBackListener((e: any) => {
-        setRecordSecs(e.currentPosition);
-        setRecordTime(audioRecorderPlayer.mmssss(Math.floor(e.currentPosition)));
-      });
-      setIsRecording(true);
-    } catch (e) {
-      console.error("startRecording error:", e);
-      Alert.alert("Recording", "Unable to start recording");
-    }
-  };
-
-  // Stop recording
-  const stopRecording = async () => {
-    try {
-      const result = await audioRecorderPlayer.stopRecorder();
-      audioRecorderPlayer.removeRecordBackListener();
-      setIsRecording(false);
-      setFilePath(result);
-    } catch (e) {
-      console.error("stopRecording error:", e);
-    }
-  };
-
-  // Upload recording
-  const uploadRecording = async () => {
-    if (!filePath) {
-      Alert.alert("Save", "No recording to upload");
-      return;
-    }
-
-    const fileUri =
-      Platform.OS === "android" && !filePath.startsWith("file://")
-        ? `file://${filePath}`
-        : filePath;
-
-    const isWav = fileUri.toLowerCase().endsWith(".wav");
-    const fileName = `rec_${Date.now()}.${isWav ? "wav" : "m4a"}`;
-    const mime = isWav ? "audio/wav" : "audio/m4a";
-
-    const formData: any = new FormData();
-    formData.append("file", {
-      uri: fileUri,
-      name: fileName,
-      type: mime,
-    } as any);
-    formData.append("title", fileName);
-    formData.append("duration", Math.max(1, Math.round(recordSecs / 1000)).toString());
-
-    try {
-      const res = await fetch(`${API_BASE}/api/recordings`, {
-        method: "POST",
-        headers: { "Content-Type": "multipart/form-data" },
-        body: formData,
-      });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t);
-      }
-      const data = await res.json();
-      Alert.alert("Uploaded", `Saved as ${data.title}`);
-
-      setRecordSecs(0);
-      setRecordTime("00:00");
-      setFilePath(null);
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      Alert.alert("Upload Failed", err?.message || "Unknown error");
-    }
-  };
-
-  // --- STEP 1: Bluetooth Devices
+  // --- STEP 1: Bluetooth Devices ---
   if (step === 1) {
     return (
-      <View>
-        <Text>Available Devices</Text>
-        <TouchableOpacity onPress={startScan} disabled={isScanning}>
-          {isScanning ? <ActivityIndicator /> : <Text>Scan Devices</Text>}
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.title}>Available Devices</Text>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={startScan}
+          disabled={isScanning}
+        >
+          {isScanning ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Icon name="search" size={20} color="#fff" />
+              <Text style={styles.primaryText}>Scan Devices</Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        <ScrollView>
+        <ScrollView style={{ marginTop: 20 }}>
           {devices.map((item) => (
-            <TouchableOpacity key={item.id} onPress={() => connectToDevice(item)}>
-              <Text>{item.name}</Text>
-              <Text>{item.id}</Text>
+            <TouchableOpacity
+              key={item.id}
+              style={styles.deviceItem}
+              onPress={() => connectToDevice(item)}
+            >
+              <Icon name="watch" size={22} color="#4CAF50" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={styles.deviceName}>{item.name}</Text>
+                <Text style={styles.deviceId}>{item.id}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {isConnecting && <ActivityIndicator />}
+        {isConnecting && (
+          <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 10 }} />
+        )}
 
-        {connectedDevice && <Text>Connected to {connectedDevice.name}</Text>}
+        {connectedDevice && (
+          <View style={styles.connectedBox}>
+            <Icon name="bluetooth-connected" size={18} color="#2E7D32" />
+            <Text style={styles.connectedText}>
+              Connected to {connectedDevice.name}
+            </Text>
+          </View>
+        )}
 
-        <TouchableOpacity onPress={() => setStep(2)}>
-          <Text>Back to Dashboard</Text>
+        <TouchableOpacity
+          style={[styles.secondaryButton, { marginTop: 20 }]}
+          onPress={() => setStep(2)}
+        >
+          <Text style={styles.secondaryText}>Back to Dashboard</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
-  // --- STEP 2: Dashboard
+  // --- STEP 2: Dashboard ---
   if (step === 2) {
     return (
-      <ScrollView>
-        <View>
-          <Text>AirPulse Health</Text>
-          <TouchableOpacity onPress={() => setStep(1)}>
-            <Text>{connectedDevice ? "Connected" : "Connect"}</Text>
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>AirPulse Health</Text>
+            <TouchableOpacity
+              style={styles.connectionBtn}
+              onPress={() => setStep(1)}
+            >
+              <Icon
+                name={connectedDevice ? "bluetooth-connected" : "bluetooth-disabled"}
+                size={18}
+                color="#fff"
+              />
+              <Text style={styles.connectionText}>
+                {connectedDevice ? "Connected" : "Connect"}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        <View>
-          <Text>Welcome Back 👋</Text>
-          <Text>Monitor your heart health with AI-powered insights.</Text>
-          <TouchableOpacity onPress={() => setStep(3)}>
-            <Text>Start Monitoring</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Main card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Welcome Back 👋</Text>
+            <Text style={styles.cardDesc}>
+              Monitor your heart health with AI-powered insights and real-time tracking.
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => setStep(3)}
+            >
+              <Text style={styles.primaryText}>Start Monitoring</Text>
+              <Icon name="arrow-forward" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-        <Text>Quick Stats</Text>
-        <View>
-          <Text>71 Avg BPM</Text>
-          <Text>3 Recordings</Text>
-          <Text>12m Today</Text>
-        </View>
+          {/* Quick Stats */}
+          <Text style={styles.sectionTitle}>Quick Stats</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>71</Text>
+              <Text style={styles.statLabel}>Avg BPM</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>3</Text>
+              <Text style={styles.statLabel}>Recordings</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>12m</Text>
+              <Text style={styles.statLabel}>Today</Text>
+            </View>
+          </View>
 
-        <Text>Recent Activity</Text>
-        <View>
-          <Text>Recording completed - 10:30 AM</Text>
-          <Text>Heart rate check - 9:15 AM</Text>
-        </View>
-      </ScrollView>
+          {/* Recent Activity */}
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <View style={styles.activityBox}>
+            <View style={styles.activityItem}>
+              <Icon name="fiber-manual-record" size={14} color="#4CAF50" />
+              <Text style={styles.activityText}>Recording completed - 10:30 AM</Text>
+            </View>
+            <View style={styles.activityItem}>
+              <Icon name="favorite" size={14} color="#e74c3c" />
+              <Text style={styles.activityText}>Heart rate check - 9:15 AM</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
-  // --- STEP 3: Recording
+  // --- STEP 3: Recording ---
   if (step === 3) {
     return (
-      <View>
-        <Text>Recording</Text>
-        <Text>{connectedDevice ? "Connected" : "Not Connected"}</Text>
-
-        <View style={{ flexDirection: "row" }}>
-          <Animated.View style={{ height: bar1, width: 10, backgroundColor: "green" }} />
-          <Animated.View style={{ height: bar2, width: 10, backgroundColor: "green" }} />
-          <Animated.View style={{ height: bar3, width: 10, backgroundColor: "green" }} />
-          <Animated.View style={{ height: bar4, width: 10, backgroundColor: "green" }} />
-        </View>
-
-        <View>
-          <Text>{isRecording ? 72 : 68} BPM</Text>
-        </View>
-
-        <Text>{isRecording ? `Recording… ${recordTime}` : "Ready"}</Text>
-
-        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-          <TouchableOpacity onPress={uploadRecording} disabled={!filePath}>
-            <Text>Save</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={isRecording ? stopRecording : startRecording}>
-            <Text>{isRecording ? "Stop" : "Record"}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => Alert.alert("Share", "Coming soon!")}>
-            <Text>Share</Text>
+      <SafeAreaView style={[styles.container, { justifyContent: "center" }]}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Recording</Text>
+          <TouchableOpacity style={styles.connectionBtn}>
+            <Text style={styles.connectionText}>
+              {connectedDevice ? "Connected" : "Not Connected"}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={() => setStep(2)}>
-          <Text>Back to Dashboard</Text>
+        {/* Waveform */}
+        <View style={styles.waveformBox}>
+          <Animated.View style={[styles.bar, { height: bar1 }]} />
+          <Animated.View style={[styles.bar, { height: bar2 }]} />
+          <Animated.View style={[styles.bar, { height: bar3 }]} />
+          <Animated.View style={[styles.bar, { height: bar4 }]} />
+        </View>
+
+        {/* BPM Circle */}
+        <View style={styles.bpmCircle}>
+          <Text style={styles.bpmValue}>68</Text>
+          <Text style={styles.bpmLabel}>BPM</Text>
+        </View>
+
+        <Text style={styles.recordingLabel}>Recording in progress...</Text>
+
+        {/* Controls */}
+        <View style={styles.bottomControls}>
+          <TouchableOpacity>
+            <Icon name="save" size={30} color="#4A545A" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.micButton}>
+            <Icon name="mic" size={32} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity>
+            <Icon name="share" size={30} color="#4A545A" />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.secondaryButton, { marginTop: 30, alignSelf: "center" }]}
+          onPress={() => setStep(2)}
+        >
+          <Text style={styles.secondaryText}>Back to Dashboard</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -315,7 +292,6 @@ const HomeScreen = () => {
 };
 
 export default HomeScreen;
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#F9FAFB" },
