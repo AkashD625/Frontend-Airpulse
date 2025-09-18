@@ -1,0 +1,8 @@
+Frontend Run 
+npx react-native run-android
+---->Reload in meteor terminal
+
+
+
+Backend Run 
+npm start
