@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // ✅ Backend URL
 export const API_URL =
   Platform.OS === "android"
+<<<<<<< HEAD
     ? "https://backend-airpulse.onrender.com/api" // Android Emulator
     : "https://backend-airpulse.onrender.com/api"; // iOS Simulator
 
@@ -28,6 +29,10 @@ export const API_URL =
 
 
     
+=======
+    ? "http://10.0.2.2:5000/api" // Android Emulator
+    : "http://localhost:5000/api"; // iOS Simulator
+>>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 
 // ✅ Navigation stack
 type RootStackParamList = {
@@ -46,7 +51,11 @@ interface LoginScreenProps {
 const fetchWithTimeout = async (
   url: string,
   options: RequestInit,
+<<<<<<< HEAD
   timeout = 15000000
+=======
+  timeout = 15000
+>>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 ): Promise<Response> => {
   return Promise.race([
     fetch(url, options),
