@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,23 +16,32 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import LinearGradient from "react-native-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// ✅ Backend URL
-export const API_URL =
+// 🌐 Backend URLs
+const LOCAL_URL =
   Platform.OS === "android"
-<<<<<<< HEAD
-    ? "https://backend-airpulse.onrender.com/api" // Android Emulator
-    : "https://backend-airpulse.onrender.com/api"; // iOS Simulator
-
-
-    // ? "http://10.0.2.2:5000/api" // Android Emulator
-    // : "http://localhost:5000/api"; // iOS Simulator
-
-
-    
-=======
     ? "http://10.0.2.2:5000/api" // Android Emulator
     : "http://localhost:5000/api"; // iOS Simulator
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
+
+const HOSTED_URL = "https://backend-airpulse.onrender.com/api";
+
+// Exported API_URL (will be updated dynamically)
+let API_URL = HOSTED_URL;
+
+// ✅ Detect local server
+const detectServer = async () => {
+  try {
+    const res = await fetch(`${LOCAL_URL}/health`, { method: "GET" });
+    if (res.ok) {
+      API_URL = LOCAL_URL;
+    } else {
+      API_URL = HOSTED_URL;
+    }
+  } catch (error) {
+    API_URL = HOSTED_URL;
+  }
+};
+
+detectServer();
 
 // ✅ Navigation stack
 type RootStackParamList = {
@@ -51,11 +60,7 @@ interface LoginScreenProps {
 const fetchWithTimeout = async (
   url: string,
   options: RequestInit,
-<<<<<<< HEAD
-  timeout = 15000000
-=======
   timeout = 15000
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 ): Promise<Response> => {
   return Promise.race([
     fetch(url, options),
