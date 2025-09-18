@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import React, { useState, useEffect } from "react";
-=======
-import React, { useState } from "react";
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 import {
   View,
   Text,
@@ -18,12 +14,6 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import LinearGradient from "react-native-linear-gradient";
-<<<<<<< HEAD
-=======
-import { API_URL } from "./config";
-
-
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 
 const COLORS = {
   primary: "#5c6b73",
@@ -33,7 +23,6 @@ const COLORS = {
   inputBg: "#f9f9f9",
 };
 
-<<<<<<< HEAD
 // --- Local + Hosted API detection ---
 const LOCAL_URL =
   Platform.OS === "android"
@@ -58,8 +47,6 @@ const detectServer = async () => {
   }
 };
 
-=======
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
 const SignupScreen = () => {
   const navigation = useNavigation<any>();
   const [name, setName] = useState("");
@@ -69,14 +56,11 @@ const SignupScreen = () => {
   const [userType, setUserType] = useState<"Normal" | "Doctor">("Normal");
   const [loading, setLoading] = useState(false);
 
-<<<<<<< HEAD
   // detect server on mount
   useEffect(() => {
     detectServer();
   }, []);
 
-=======
->>>>>>> 1e3ca2e9921006468160f15e5449fe00755acc79
   const handleSignup = async () => {
     if (!name.trim() || !email.trim() || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill all fields");
